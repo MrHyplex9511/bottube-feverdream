@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """
-feverdream-order 鈥?CLI for ordering AI video generation on BoTTube
+feverdream-order —CLI for ordering AI video generation on BoTTube
 
 Orders AI-generated videos (feverdreams) by:
 1. Getting a price quote from /api/feverdream/info
@@ -17,6 +18,13 @@ Usage:
 
 import argparse, getpass, hashlib, json, os, sys, time, urllib.request, urllib.error
 from pathlib import Path
+
+# Resolve rustchain_crypto eagerly when available; cmd_order re-resolves
+# lazily for repo-local layouts where the wallet package is off the path.
+try:
+    from rustchain_crypto import RustChainWallet
+except ImportError:
+    RustChainWallet = None
 
 NODE = "https://50.28.86.131"
 
@@ -45,9 +53,9 @@ def cmd_info():
     """Show feverdream pricing info."""
     data = api_get("/api/feverdream/info")
     if "error" in data:
-        print(f"鉂?{data['error']}")
+        print(f"🔴{data['error']}")
         return 1
-    print("\n馃幀 FeverDream Pricing\n")
+    print("\n🎬 FeverDream Pricing\n")
     if isinstance(data, dict):
         for k, v in data.items():
             print(f"  {k}: {v}")
@@ -59,20 +67,21 @@ def cmd_order(args):
     """Place a feverdream order."""
     wallet_path = Path(args.wallet)
     if not wallet_path.exists():
-        print(f"鉂?Wallet file not found: {wallet_path}")
+        print(f"🔴Wallet file not found: {wallet_path}")
         return 1
 
     # Load wallet
     with open(wallet_path) as f:
         keystore = json.load(f)
 
-    try:
-        import sys, os
-        sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "Rustchain", "wallet"))
-        from rustchain_crypto import RustChainWallet
-    except ImportError:
-        print("❌ rustchain_crypto required. Please ensure the wallet package is available.")
-        return 1
+    global RustChainWallet
+    if RustChainWallet is None:
+        try:
+            sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "Rustchain", "wallet"))
+            from rustchain_crypto import RustChainWallet
+        except ImportError:
+            print("❌ rustchain_crypto required. Please ensure the wallet package is available.")
+            return 1
 
     # Try to decrypt if encrypted
     if "ciphertext" in keystore:
@@ -92,14 +101,14 @@ def cmd_order(args):
     address = wallet.address
 
     # Get quote
-    print(f"\n馃幀 FeverDream Order")
+    print(f"\n🎬 FeverDream Order")
     print(f"  Prompt: {args.prompt}")
     print(f"  Duration: {args.seconds}s")
     print(f"  Wallet: {address}")
 
     info = api_get("/api/feverdream/info")
     if "error" in info:
-        print(f"鈿?Using default pricing (0.014 RTC per 6s)")
+        print(f"⏳Using default pricing (0.014 RTC per 6s)")
         cost = 0.014
     else:
         cost = info.get("price_per_6s", 0.014) * (args.seconds / 6)
@@ -108,7 +117,7 @@ def cmd_order(args):
     print(f"  Pay to: feverdream_studio")
 
     if args.dry_run:
-        print("\n鉁?Dry run 鈥?no transaction sent")
+        print("\n✅Dry run —no transaction sent")
         print(f"  Would send: {cost:.4f} RTC to feverdream_studio")
         print(f"  Would POST order for: {args.prompt}")
         return 0
@@ -132,13 +141,13 @@ def cmd_order(args):
     print(f"  Placing order...")
     result = api_post("/api/feverdream/order", order)
     if "error" in result:
-        print(f"鉂?Order failed: {result['error']}")
+        print(f"🔴Order failed: {result['error']}")
         return 1
 
     order_id = result.get("order_id") or result.get("id", "?")
     watch_url = result.get("watch_url") or result.get("url", f"{NODE}/feverdream/watch/{order_id}")
-    print(f"  鉁?Order placed! ID: {order_id}")
-    print(f"\n馃帴 Watch URL: {watch_url}")
+    print(f"  ✅Order placed! ID: {order_id}")
+    print(f"\n📺 Watch URL: {watch_url}")
 
     # Poll for completion
     if args.wait:
@@ -146,22 +155,22 @@ def cmd_order(args):
         for i in range(30):
             status = api_get(f"/api/feverdream/status/{order_id}")
             if status.get("status") in ("completed", "done", "ready"):
-                print(f"  鉁?Complete!")
+                print(f"  ✅Complete!")
                 final_url = status.get("watch_url") or status.get("url") or watch_url
                 print(f"  Final URL: {final_url}")
                 break
             if status.get("status") in ("failed", "error"):
-                print(f"  鉂?Failed: {status.get('error', 'unknown')}")
+                print(f"  🔴Failed: {status.get('error', 'unknown')}")
                 break
             time.sleep(2)
             print(f"  .", end="", flush=True)
         else:
-            print(f"\n  鈿?Still processing. Check: {watch_url}")
+            print(f"\n  ⏳Still processing. Check: {watch_url}")
 
     return 0
 
 def main():
-    parser = argparse.ArgumentParser(description="FeverDream CLI 鈥?Order AI video generation")
+    parser = argparse.ArgumentParser(description="FeverDream CLI —Order AI video generation")
     parser.add_argument("--info", action="store_true", help="Show pricing info")
     parser.add_argument("--prompt", help="Video description prompt")
     parser.add_argument("--seconds", type=int, default=6, help="Video duration in seconds")
